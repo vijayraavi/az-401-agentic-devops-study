@@ -1,9 +1,6 @@
-# Day 2 | Wed 25 Nov 2026 (IST)
+# Day 2 | Wed 25 Nov 2026 (IST): Success metrics, Analytics/OData & docs-as-code with Copilot
 
-**Domain:** Processes
-
-**Topic:** Success metrics (DORA, cycle/lead time, KPIs→metrics), Analytics/OData & AI-assisted queries; documenting with Copilot (wiki, README, CHANGELOG, LICENSE, CODEOWNERS, releases, Mermaid diagrams)
-
-**Planned hands-on:** Cycle-time widgets, Analytics query, Copilot-generated CHANGELOG + CODEOWNERS
-
-_Placeholder: the lesson, cheat sheet, infographic and practice questions get added on the day. See [../PLAN.md](../PLAN.md) and the [AZ-401 study guide](https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/az-401)._
+- [lesson.md](lesson.md): concepts (KPI→metric, DORA five metrics, flow widgets, Analytics/OData, docs-as-code), Mermaid diagrams, ADO + GitHub lab, cleanup, cost notes
+- [cheatsheet.md](cheatsheet.md): one-page summary
+- [infographic.png](infographic.png): visual summary (regenerate with `python3 make_infographic.py`)
+- [practice-questions.md](practice-questions.md): 5 exam-style questions with answers
