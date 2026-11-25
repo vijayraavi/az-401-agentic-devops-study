@@ -60,6 +60,7 @@ day-02 … day-19/   README.md placeholder (date + topic), filled in on the day
 | Instrumentation | 15–20% | 17.5% | 2 (D15–D16) + ½ of D17 | ~15% |
 
 Daily rhythm (~2–3 h): 30 min concepts → 60–90 min hands-on lab (Azure DevOps **and** GitHub) → 20 min cheat sheet → 15 min 5 practice questions → cleanup.
+Lab commands are provided for **Windows PowerShell** and **Ubuntu (bash)**. YAML and other file contents stay the same in both.
 Rules: YAML pipelines only (no classic release), workload identity federation / OIDC (no stored client secrets), Copilot cloud/coding agent + MCP, GitHub Agentic Workflows, Microsoft Foundry where relevant. Keep Azure spend near zero and clean up every lab.
 
 ### Day-by-day

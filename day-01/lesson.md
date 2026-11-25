@@ -93,7 +93,40 @@ flowchart LR
 
 Replace `<org>` with your Azure DevOps org name. Use an **Entra-backed** org so the remote MCP server works on Day 3.
 
+### Shell setup
+
+Labs are shown for **Windows PowerShell** and **Ubuntu (bash)**. YAML, JSON, and other file contents are the same in both. Commands that are identical in both shells are shown once and marked **works in both**.
+
+Install Azure CLI, GitHub CLI, Git, and the Azure DevOps CLI extension once if you don't already have them. PowerShell snippets are written for **PowerShell 7** (`winget install -e --id Microsoft.PowerShell`). Windows PowerShell 5.1 does not support `&&`, and `>` redirection there writes UTF-16, so these labs use `Set-Content` instead.
+
+**PowerShell**
+```powershell
+winget install -e --id Microsoft.AzureCLI
+winget install -e --id GitHub.cli
+winget install -e --id Git.Git
+az extension add --name azure-devops
+```
+
+**Ubuntu (bash)**
+```bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+sudo apt update && sudo apt install -y gh git
+# If apt cannot find gh, follow https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+az extension add --name azure-devops
+```
+
 ### Lab A: Azure setup (2 min)
+**PowerShell**
+```powershell
+az login
+az account show --query '{sub:name, id:id}' -o table
+az group create -n rg-az401-lab -l centralindia `
+  --tags purpose=az401-study owner=vijayraavi expires=2026-12-13
+az extension add --name azure-devops   # Azure DevOps CLI
+az devops configure --defaults organization="https://dev.azure.com/<org>"
+```
+
+**Ubuntu (bash)**
 ```bash
 az login
 az account show --query "{sub:name, id:id}" -o table
@@ -105,6 +138,43 @@ az devops configure --defaults organization=https://dev.azure.com/<org>
 ([Azure DevOps CLI](https://learn.microsoft.com/en-us/azure/devops/cli/?view=azure-devops))
 
 ### Lab B: Azure DevOps: Boards + Repos traceability
+**PowerShell**
+```powershell
+# 1. Project on the Agile process (User Story / Bug / Task)
+az devops project create --name az401-lab --process Agile `
+  --source-control git --visibility private
+az devops configure --defaults organization="https://dev.azure.com/<org>" project=az401-lab
+
+# 2. Work item hierarchy: Epic -> User Story -> Task
+$epic = (az boards work-item create --type Epic --title "AZ-401 lab: traceability" --query id -o tsv).Trim()
+$story = (az boards work-item create --type "User Story" --title "Add health endpoint" --query id -o tsv).Trim()
+$task = (az boards work-item create --type Task --title "Write /health handler" --query id -o tsv).Trim()
+az boards work-item relation add --id $story --relation-type parent --target-id $epic
+az boards work-item relation add --id $task  --relation-type parent --target-id $story
+Write-Output "EPIC=$epic STORY=$story TASK=$task"
+
+# 3. Seed the default repo, then require linked work items on main
+git clone "https://dev.azure.com/<org>/az401-lab/_git/az401-lab"
+Set-Location az401-lab
+Set-Content -Path README.md -Value "# az401-lab" -Encoding utf8
+git add .
+git commit -m "init"
+git push -u origin HEAD:main
+$repoId = (az repos show --repository az401-lab --query id -o tsv).Trim()
+az repos policy work-item-linking create --repository-id $repoId `
+  --branch main --blocking true --enabled true
+
+# 4. Feature branch + PR linked to the story
+git checkout -b feature/health
+Set-Content -Path health.py -Value 'print("ok")' -Encoding utf8
+git add .
+git commit -m "Add health handler"
+git push -u origin feature/health
+az repos pr create --source-branch feature/health --target-branch main `
+  --title "Add /health" --description "Implements the story" --work-items $story
+```
+
+**Ubuntu (bash)**
 ```bash
 # 1. Project on the Agile process (User Story / Bug / Task)
 az devops project create --name az401-lab --process Agile \
@@ -138,6 +208,18 @@ Check in the portal: the PR shows the **linked work item** policy as passing, an
 **Notifications (UI, 3 min):** Project settings → Notifications → New subscription → *Work item changed* → filter on the area path → deliver to the team. Then try **Service hooks** → *Web Hooks* (point it at https://webhook.site for a throwaway test). ([notifications](https://learn.microsoft.com/en-us/azure/devops/organizations/notifications/about-notifications?view=azure-devops), [service hooks](https://learn.microsoft.com/en-us/azure/devops/service-hooks/overview?view=azure-devops))
 
 ### Lab C: GitHub: Boards app + Actions traceability gate
+**PowerShell**
+```powershell
+gh auth login
+gh repo create vijayraavi/az401-lab-app --private --clone
+Set-Location az401-lab-app
+Set-Content -Path README.md -Value "# az401-lab-app" -Encoding utf8
+git add .
+git commit -m "init"
+git push -u origin main
+```
+
+**Ubuntu (bash)**
 ```bash
 gh auth login
 gh repo create vijayraavi/az401-lab-app --private --clone && cd az401-lab-app
@@ -170,6 +252,18 @@ jobs:
 ```
 3. Make that check required: **Settings → Rules → Rulesets → New branch ruleset**, target `main`, enable *Require a pull request before merging* and *Require status checks to pass*, then add `require-ab-link`. ([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets))
 4. Test it:
+**PowerShell**
+```powershell
+git checkout -b feature/readme
+Add-Content -Path README.md -Value "health docs" -Encoding utf8
+git commit -am "Docs for health endpoint AB#$story"
+git push -u origin feature/readme
+gh pr create --title "Docs" --body "No link"            # gate fails
+gh pr edit --body "Fixes AB#$story"                     # gate passes, link appears on the story
+gh pr merge --squash --delete-branch                    # merged to default branch, so story moves to Resolved
+```
+
+**Ubuntu (bash)**
 ```bash
 git checkout -b feature/readme && echo "health docs" >> README.md
 git commit -am "Docs for health endpoint AB#$STORY" && git push -u origin feature/readme
@@ -194,6 +288,15 @@ In Copilot Chat **agent mode**, ask: *"List the child tasks of user story <STORY
 
 ### Cleanup (run these yourself when you're done; nothing here is deleted for you)
 Keep `az401-lab` and `az401-lab-app` if you want to reuse them on Days 2–5, since both are free. To remove them:
+**PowerShell**
+```powershell
+$id = (az devops project show -p az401-lab --query id -o tsv).Trim()
+az devops project delete --id $id --yes
+gh repo delete vijayraavi/az401-lab-app --yes      # needs: gh auth refresh -s delete_repo
+az group delete -n rg-az401-lab --yes --no-wait     # empty RG, no cost either way
+```
+
+**Ubuntu (bash)**
 ```bash
 az devops project delete --id $(az devops project show -p az401-lab --query id -o tsv) --yes
 gh repo delete vijayraavi/az401-lab-app --yes      # needs: gh auth refresh -s delete_repo

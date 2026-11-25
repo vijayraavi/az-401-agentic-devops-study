@@ -135,8 +135,50 @@ flowchart LR
 
 Replace `<org>` with your Azure DevOps org (Entra-backed, as on Day 1).
 
+### Shell setup
+
+Same as [Day 1](../day-01/lesson.md#shell-setup): commands are shown for **Windows PowerShell** (PowerShell 7 recommended) and **Ubuntu (bash)**. Identical commands are marked **works in both**. If the tools are already installed, skip the install and sign in in Lab A. Otherwise:
+
+**PowerShell**
+```powershell
+winget install -e --id Microsoft.AzureCLI
+winget install -e --id GitHub.cli
+winget install -e --id Git.Git
+az extension add --name azure-devops
+```
+
+**Ubuntu (bash)**
+```bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+sudo apt update && sudo apt install -y gh git jq
+# If apt cannot find gh, follow https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+az extension add --name azure-devops
+```
+
 ### Lab A: Generate flow data in `az401-lab` (10 min)
 Lead/Cycle widgets only show **completed** items, so move a few user stories through the Agile states New → Active → Closed ([Agile workflow](https://learn.microsoft.com/en-us/azure/devops/boards/work-items/guidance/agile-process-workflow?view=azure-devops)).
+**PowerShell**
+```powershell
+az login
+az extension add --name azure-devops            # skip if already added on Day 1
+az devops configure --defaults organization="https://dev.azure.com/<org>" project=az401-lab
+
+foreach ($t in "Add /metrics endpoint", "Write CHANGELOG", "Add CODEOWNERS", "Fix login typo") {
+  $id = (az boards work-item create --type "User Story" --title $t --query id -o tsv).Trim()
+  az boards work-item update --id $id --state Active -o none
+  Write-Output "created + activated $id"
+}
+az boards work-item create --type Bug --title "Health check returns 500" --query id -o tsv
+
+# Close two stories now. Close the rest later today or tomorrow so the chart has spread.
+az boards query --wiql "SELECT [System.Id],[System.Title],[System.State] FROM WorkItems `
+  WHERE [System.TeamProject]='az401-lab' AND [System.WorkItemType]='User Story' `
+  AND [System.State]='Active' ORDER BY [System.Id]" -o table
+az boards work-item update --id "<ID1>" --state Closed -o none
+az boards work-item update --id "<ID2>" --state Closed -o none
+```
+
+**Ubuntu (bash)**
 ```bash
 az login
 az extension add --name azure-devops            # skip if already added on Day 1
@@ -169,6 +211,36 @@ az boards work-item update --id <ID2> --state Closed -o none
 4. **KPI exercise (5 min):** write down one KPI → metric → target for each of the six study-guide areas, using the table in 1.1. Add the list to the wiki page in Lab D.
 
 ### Lab C: Analytics OData query with an Entra token (15 min)
+**PowerShell**
+```powershell
+$org = "<org>"
+$proj = "az401-lab"
+$token = (az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 `
+          --query accessToken -o tsv).Trim()
+$headers = @{ Authorization = "Bearer $token" }
+
+# 1) Per-item lead and cycle time for completed user stories
+# Single-quoted fragments keep OData $filter / $select / $apply / $count literal.
+$base = "https://analytics.dev.azure.com/$org/$proj/_odata/v3.0-preview/WorkItems"
+$filter = "WorkItemType eq 'User Story' and StateCategory eq 'Completed' and CompletedDate ge 2026-11-01Z"
+$select = "WorkItemId,Title,State,LeadTimeDays,CycleTimeDays,CompletedDateSK"
+$uri = '{0}?$filter={1}&$select={2}' -f $base, [uri]::EscapeDataString($filter), [uri]::EscapeDataString($select)
+(Invoke-RestMethod -Uri $uri -Headers $headers).value
+
+# 2) Server-side aggregation: average lead/cycle time by work item type
+$apply = 'filter(StateCategory eq ''Completed'' and CompletedDate ge 2026-11-01Z)/groupby((WorkItemType), aggregate($count as Done, LeadTimeDays with average as AvgLeadDays, CycleTimeDays with average as AvgCycleDays))'
+$uri = '{0}?$apply={1}' -f $base, [uri]::EscapeDataString($apply)
+(Invoke-RestMethod -Uri $uri -Headers $headers).value
+
+# 3) DORA-style proxy: pipeline run outcomes since 1 Nov (works once you have pipelines, Day 6+)
+$runs = "https://analytics.dev.azure.com/$org/$proj/_odata/v3.0-preview/PipelineRuns"
+$apply = 'filter(CompletedDate ge 2026-11-01Z)/aggregate($count as TotalCount, SucceededCount with sum as SucceededCount, FailedCount with sum as FailedCount)'
+$uri = '{0}?$apply={1}' -f $runs, [uri]::EscapeDataString($apply)
+(Invoke-RestMethod -Uri $uri -Headers $headers).value
+Remove-Variable token, headers -ErrorAction SilentlyContinue
+```
+
+**Ubuntu (bash)**
 ```bash
 ORG=<org>; PROJ=az401-lab
 TOKEN=$(az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 \
@@ -194,7 +266,7 @@ curl -sG "https://analytics.dev.azure.com/$ORG/$PROJ/_odata/v3.0-preview/Pipelin
   | jq '.value'
 unset TOKEN
 ```
-Query shapes come from Microsoft's samples ([lead/cycle](https://learn.microsoft.com/en-us/azure/devops/report/powerbi/sample-boards-leadcycletime?view=azure-devops), [aggregation](https://learn.microsoft.com/en-us/azure/devops/report/extend-analytics/aggregated-data-analytics?view=azure-devops), [PipelineRuns](https://learn.microsoft.com/en-us/azure/devops/report/powerbi/sample-pipelines-outcome-summary?view=azure-devops)). Install `jq` first if you don't have it. You can also paste query 1 straight into a browser where you're signed in to Azure DevOps (no token needed):
+Query shapes come from Microsoft's samples ([lead/cycle](https://learn.microsoft.com/en-us/azure/devops/report/powerbi/sample-boards-leadcycletime?view=azure-devops), [aggregation](https://learn.microsoft.com/en-us/azure/devops/report/extend-analytics/aggregated-data-analytics?view=azure-devops), [PipelineRuns](https://learn.microsoft.com/en-us/azure/devops/report/powerbi/sample-pipelines-outcome-summary?view=azure-devops)). On Ubuntu, install `jq` first if you don't have it (`sudo apt install -y jq`). In PowerShell, `Invoke-RestMethod` already parses JSON, so `jq` is not required. You can also paste query 1 straight into a browser where you're signed in to Azure DevOps (no token needed):
 `https://analytics.dev.azure.com/<org>/az401-lab/_odata/v3.0-preview/WorkItems?$filter=WorkItemType eq 'User Story' and StateCategory eq 'Completed'&$select=WorkItemId,Title,LeadTimeDays,CycleTimeDays`
 
 Pipeline failures are only a *proxy* for DORA change fail rate. DORA counts deployments to production that need immediate intervention ([DORA](https://dora.dev/guides/dora-metrics/)).
@@ -203,11 +275,46 @@ Pipeline failures are only a *proxy* for DORA change fail rate. DORA counts depl
 
 **AI-assisted query (10 min):** in VS Code, reuse Day 1's `.vscode/mcp.json` (remote ADO MCP with `X-MCP-Toolsets: wit,work` and `X-MCP-Readonly: true`) ([remote MCP](https://learn.microsoft.com/en-us/azure/devops/mcp-server/remote-mcp-server?view=azure-devops)). In Copilot Chat **agent mode**, ask:
 - *"List the user stories closed in az401-lab in the last 7 days with their state change dates, and estimate cycle time for each. Do not use previously fetched data."*
-- *"Write an Analytics OData v3.0-preview query that returns average CycleTimeDays grouped by WorkItemType for completed items in az401-lab since 2026-11-01."* Run what it gives you with the curl pattern above and compare the numbers to the widget.
+- *"Write an Analytics OData v3.0-preview query that returns average CycleTimeDays grouped by WorkItemType for completed items in az401-lab since 2026-11-01."* Run what it gives you with the curl or Invoke-RestMethod pattern above and compare the numbers to the widget.
 
 These prompts are adapted from the Microsoft docs ([AI prompts](https://learn.microsoft.com/en-us/azure/devops/report/dashboards/cycle-time-and-lead-time?view=azure-devops), [MCP overview tip on stale data](https://learn.microsoft.com/en-us/azure/devops/mcp-server/mcp-server-overview?view=azure-devops)). Always check AI-written OData against the metadata. Copilot can invent field names.
 
 ### Lab D: Azure DevOps wiki-as-code with Mermaid (15 min)
+**PowerShell**
+```powershell
+git clone "https://dev.azure.com/<org>/az401-lab/_git/az401-lab"   # or reuse Day 1 clone
+Set-Location az401-lab
+git checkout main
+git pull
+New-Item -ItemType Directory -Force -Path docs | Out-Null
+@'
+# Flow metrics for az401-lab
+
+::: mermaid
+graph LR
+  A[Created] --> B[Active] --> C[Closed]
+  A -. lead time .-> C
+  B -. cycle time .-> C
+:::
+
+| Area | KPI | Metric | Target |
+|---|---|---|---|
+| Development | Faster flow | Cycle time (stories) | < 3 days |
+'@ | Set-Content -Path docs/Flow-Metrics.md -Encoding utf8
+Set-Content -Path docs/.order -Value "Flow-Metrics" -Encoding utf8
+git checkout -b docs/flow-metrics
+git add docs
+git commit -m "Docs: flow metrics wiki page"
+git push -u origin docs/flow-metrics
+az repos pr create --source-branch docs/flow-metrics --target-branch main `
+  --title "Docs: flow metrics" --work-items "<ID1>"     # Day 1 policy requires a linked work item
+# after completing the PR:
+az devops wiki create --name az401-docs --type codewiki --repository az401-lab `
+  --version main --mapped-path /docs
+az devops wiki list -o table
+```
+
+**Ubuntu (bash)**
 ```bash
 git clone https://dev.azure.com/<org>/az401-lab/_git/az401-lab && cd az401-lab   # or reuse Day 1 clone
 git checkout main && git pull
@@ -240,6 +347,16 @@ az devops wiki list -o table
 Optional, Copilot: in agent mode with the ADO MCP `wiki` toolset (not read-only), ask *"Summarise the az401-docs wiki page Flow-Metrics and suggest two more KPIs."* That adds `search_wiki`/wiki tools to the agent ([remote MCP toolsets](https://learn.microsoft.com/en-us/azure/devops/mcp-server/remote-mcp-server?view=azure-devops)).
 
 ### Lab E: GitHub docs-as-code in `vijayraavi/az401-lab-app` (25 min)
+**PowerShell**
+```powershell
+Set-Location az401-lab-app
+git checkout main
+git pull
+git checkout -b docs/governance
+New-Item -ItemType Directory -Force -Path .github/prompts | Out-Null
+```
+
+**Ubuntu (bash)**
 ```bash
 cd az401-lab-app && git checkout main && git pull
 git checkout -b docs/governance
@@ -293,7 +410,8 @@ You maintain CHANGELOG.md using the Keep a Changelog 1.1.0 format.
 4. Do not invent changes that are not in the history. Do not touch other files.
 ```
 Run `/changelog` in agent mode, review the diff, and keep only accurate lines. Then commit:
-```bash
+**Works in both**
+```
 git add .github CHANGELOG.md
 git commit -m "Docs: CODEOWNERS, release.yml, CHANGELOG (Copilot-assisted) AB#<ID2>"
 git push -u origin docs/governance
@@ -306,6 +424,15 @@ On the PR page, the CODEOWNERS file is now active on `main`. Future PRs that tou
 4. **LICENSE**: list licenses with `gh repo license list`, view one with `gh repo license view MIT`. In the browser, *Add file → Create new file → `LICENSE`* gives you the **Choose a license template** picker ([licensing](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)). The repo is private, so a license is optional; this is just practice.
 
 5. **Release with generated notes**:
+**PowerShell**
+```powershell
+git checkout main
+git pull
+gh release create v0.1.0 --generate-notes --notes "First AZ-401 lab release" --target main
+gh release view v0.1.0
+```
+
+**Ubuntu (bash)**
 ```bash
 git checkout main && git pull
 gh release create v0.1.0 --generate-notes --notes "First AZ-401 lab release" --target main
@@ -319,7 +446,8 @@ gh release view v0.1.0
 
 ### Cleanup (run these yourself when you're done; nothing here is deleted for you)
 Keep `az401-lab` and `az401-lab-app` for Days 3–5. Everything below is free to keep. If you want to tidy up:
-```bash
+**Works in both**
+```
 az devops wiki delete --wiki az401-docs --yes            # unpublishes the code wiki; docs/ stays in the repo
 gh release delete v0.1.0 --yes --cleanup-tag -R vijayraavi/az401-lab-app
 # Work items from Lab A: leave them (they feed the widgets). To remove one:
