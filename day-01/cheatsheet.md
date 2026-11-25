@@ -14,7 +14,13 @@
 - 1 GitHub repo connects to 1 ADO org. If links fail, check the Azure Boards identity's area-path permissions ([source](https://learn.microsoft.com/en-us/azure/devops/boards/github/connect-to-github?view=azure-devops)).
 
 **Enforce traceability**
-- ADO: branch policy *Check for linked work items* (**works in both** PowerShell and bash): `az repos policy work-item-linking create --repository-id <id> --branch main --blocking true --enabled true` ([source](https://learn.microsoft.com/en-us/cli/azure/repos/policy/work-item-linking?view=azure-cli-latest))
+- ADO: branch policy *Check for linked work items* (**works in both** PowerShell and bash) ([source](https://learn.microsoft.com/en-us/cli/azure/repos/policy/work-item-linking?view=azure-cli-latest)):
+
+```bash
+# Require a linked work item on PRs into main. --repository-id is the repo GUID (`az repos show --query id`).
+# --blocking true fails the PR if none is linked; --enabled true turns the policy on.
+az repos policy work-item-linking create --repository-id <id> --branch main --blocking true --enabled true
+```
 - GitHub: **ruleset** with required PR + required status check (an Actions job that greps the PR body for `AB#\d+`) ([source](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets))
 - In Actions, pass `github.event.pull_request.body` through `env:`, never inline `${{ }}` in `run:`, to avoid script injection. Set `permissions: contents: read`.
 
