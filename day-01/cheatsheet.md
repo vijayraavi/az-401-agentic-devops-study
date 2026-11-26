@@ -24,6 +24,18 @@ az repos policy work-item-linking create --repository-id <id> --branch main --bl
 - GitHub: **ruleset** with required PR + required status check (an Actions job that greps the PR body for `AB#\d+`) ([source](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets))
 - In Actions, pass `github.event.pull_request.body` through `env:`, never inline `${{ }}` in `run:`, to avoid script injection. Set `permissions: contents: read`.
 
+- To change a PR description, do **not** use `gh pr edit`. GitHub CLI can still query classic Projects (`projectCards`); GitHub rejects that field, so the body may never change ([sunset notice](https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/)). The Actions gate reads the **PR body**, not the commit message. Use the REST API instead ([update a pull request](https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request)). Inside a clone, `gh api` fills in `{owner}/{repo}`. Quote that path in PowerShell so `{owner}` is not a script block. In bash, use `"Fixes AB#${STORY:?STORY not set}"` after `echo "$STORY"`; in PowerShell, double quotes expand `$story` and single quotes do not.
+
+**Works in both** (replace `<PR>` and `<id>`, or use the literal single-quoted form once you know the id):
+
+```bash
+# Update the PR description via REST. --method PATCH updates the pull request; -f body= sets the description.
+gh api --method PATCH "repos/{owner}/{repo}/pulls/<PR>" -f body='Fixes AB#<id>'
+# Print the body to confirm it changed, then re-run / re-list the required status check.
+gh pr view "<PR>" --json body --jq .body
+gh pr checks "<PR>"
+```
+
 **Feedback channels**
 - Notifications: personal / team / project subscriptions ([source](https://learn.microsoft.com/en-us/azure/devops/organizations/notifications/about-notifications?view=azure-devops))
 - Service hooks: push ADO events to Teams, Slack, Web Hooks, and others ([source](https://learn.microsoft.com/en-us/azure/devops/service-hooks/overview?view=azure-devops))

@@ -982,7 +982,16 @@ gh agent-task view "<PR>" -R "$REPO" --log
 Then in the PR: check the description contains `AB#<wi>`, select **Approve and run workflows** so `require-ab-link` runs, and read the diff. Merging is optional (Cleanup closes the PR if you don't merge).
 
 **Expected result:** The log shows `microsoft_docs_search`/`microsoft_docs_fetch` calls (or, for Actions sessions, a **Start MCP Servers** step listing them). The diff touches only `docs/`. Workflows stay pending until you approve them.
-**Common errors:** `require-ab-link` red means the agent left `AB#` out of the PR description. Edit the description (`gh pr edit "<PR>" --body "AB#<wi> ..."`). That's a good example of why gates live in CI and not only in instructions.
+**Common errors:** `require-ab-link` red means the agent left `AB#` out of the PR description. Do **not** use ~~`gh pr edit "<PR>" --body "AB#<wi> ..."`~~ — GitHub CLI can fail on the deprecated classic Projects `projectCards` field and leave the body unchanged (Day 1, **Known issue & fix**). Update the description with the REST API instead, then confirm the body and re-check. That's a good example of why gates live in CI and not only in instructions.
+
+**Works in both** (replace `<PR>` and `<wi>`; quote the path in PowerShell so `{owner}` is not a script block):
+```bash
+# Update the PR description via REST. Inside a clone, gh api fills in {owner}/{repo}. -f body= sets the description.
+gh api --method PATCH "repos/{owner}/{repo}/pulls/<PR>" -f body='AB#<wi>'
+# Confirm the description contains AB#<wi>, then wait for require-ab-link to re-run and go green.
+gh pr view "<PR>" --json body --jq .body
+gh pr checks "<PR>" --watch
+```
 
 #### Step 5 (optional, read-through): Azure DevOps MCP for the cloud agent
 

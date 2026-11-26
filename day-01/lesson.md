@@ -792,48 +792,98 @@ jobs:
 
 #### Step 5: Open a PR with no `AB#` in the body, then fix it and merge
 
-**Why:** This is the exam trap: a PR **title** of `Docs AB#123` does not create a Boards link and should not satisfy the gate. Only the **description** (body) is used. `Fixes AB#<id>` creates the link immediately, but the story moves to **Resolved** only when the PR **merges into the default branch**. `fix` / `fixes` / `fixed` target the first state in the Resolved category (Agile: Resolved). `Closed AB#n` would move it to Closed ([AB# doc](https://learn.microsoft.com/en-us/azure/devops/boards/github/link-to-from-github?view=azure-devops)).
+**Why:** This is the exam trap: a PR **title** of `Docs AB#123` does not create a Boards link and should not satisfy the gate. Only the **description** (body) is used. The `require-ab-link` check reads `github.event.pull_request.body`, not the commit message, so `AB#` in the commit alone is not enough. `Fixes AB#<id>` creates the link immediately, but the story moves to **Resolved** only when the PR **merges into the default branch**. `fix` / `fixes` / `fixed` target the first state in the Resolved category (Agile: Resolved). `Closed AB#n` would move it to Closed ([AB# doc](https://learn.microsoft.com/en-us/azure/devops/boards/github/link-to-from-github?view=azure-devops)). The `"No link"` body is intentional, so you see the check go red first. Then update the description with the REST API — not `gh pr edit` (see **Known issue & fix** below).
 
 **PowerShell**
 ```powershell
+# Fail the step if $story was never set (new shell) or is empty. Restore it from Lab B if this throws.
+if ([string]::IsNullOrWhiteSpace($story)) { throw 'STORY is not set. Restore it from Lab B, for example: $story = "864"' }
+# Confirm the work item ID that will go into the PR body after the failing check.
+Write-Output "STORY=$story"
 # New branch for the docs change that will test the Actions gate and the AB# merge transition.
 git checkout -b feature/readme
 # Append a line as UTF-8 (Add-Content, not >> , so the file stays UTF-8).
 Add-Content -Path README.md -Value "health docs" -Encoding utf8
-# -am stages tracked-file edits and commits. AB# in a commit message creates a link, but does not change state.
+# -am stages tracked-file edits and commits. AB# in a commit message creates a Boards link, but does not change state and does not satisfy the body-only gate.
 git commit -am "Docs for health endpoint AB#$story"
 git push -u origin feature/readme
-# Open a PR with no AB# in the body so the required status check fails (exam trap: a title is not enough).
+# Open a PR with no AB# in the body so the required status check fails (exam trap: a title is not enough). Keep this "No link" demo.
 gh pr create --title "Docs" --body "No link"
-# Put Fixes AB# in the description: the gate passes and the Boards link appears. State does not change yet.
-gh pr edit --body "Fixes AB#$story"
+# Resolve the current branch's PR number. --json number --jq .number prints only the integer.
+$pr = (gh pr view --json number --jq .number).Trim()
+# List checks once. This run is expected to fail: the job reads the PR description, and "No link" has no AB#. Don't use --watch here.
+gh pr checks $pr
+# DON'T USE: gh pr edit --body "Fixes AB#$story"
+# GitHub CLI still queries classic Projects (projectCards) on that command, and GitHub rejects the field, so the body never changes. See Known issue & fix below.
+# Update the description through the REST API instead. Inside a clone, gh api fills in {owner}/{repo}.
+# --method PATCH updates the PR. -f body= sets the description. Quote the path so PowerShell does not treat {owner} as a script block.
+# Double quotes expand $story. Single quotes would not — 'Fixes AB#$story' would be stored literally.
+gh api --method PATCH "repos/{owner}/{repo}/pulls/$pr" -f "body=Fixes AB#$story"
+# Confirm the description actually changed to Fixes AB#<id> (the require-ab-link check reads this body, not the commit message).
+gh pr view $pr --json body --jq .body
+# The workflow listens for edited, so the check re-runs. --watch waits until required checks finish; it should now be green.
+gh pr checks $pr --watch
 # Squash-merge to the default branch and delete the feature branch. Only this merge moves the story to Resolved.
-gh pr merge --squash --delete-branch
+gh pr merge $pr --squash --delete-branch
 ```
 
 **Ubuntu (bash)**
 ```bash
+# Fail the step if STORY is unset or empty, instead of writing a body of "Fixes AB#". Restore it from Lab B if this exits.
+: "${STORY:?STORY not set. Restore it from Lab B, for example: STORY=864}"
+# Confirm the work item ID that will go into the PR body after the failing check.
+echo "$STORY"
 # New branch and a docs edit that will test the Actions gate and the AB# merge transition.
 git checkout -b feature/readme && echo "health docs" >> README.md
-# -am stages tracked-file edits and commits. AB# in a commit message creates a link, but does not change state.
+# -am stages tracked-file edits and commits. AB# in a commit message creates a Boards link, but does not change state and does not satisfy the body-only gate.
 git commit -am "Docs for health endpoint AB#$STORY" && git push -u origin feature/readme
-# Open a PR with no AB# in the body so the required status check fails (exam trap: a title is not enough).
+# Open a PR with no AB# in the body so the required status check fails (exam trap: a title is not enough). Keep this "No link" demo.
 gh pr create --title "Docs" --body "No link"
-# Put Fixes AB# in the description: the gate passes and the Boards link appears. State does not change yet.
-gh pr edit --body "Fixes AB#$STORY"
+# Resolve the current branch's PR number. --json number --jq .number prints only the integer.
+PR=$(gh pr view --json number --jq .number)
+# List checks once. This run is expected to fail: the job reads the PR description, and "No link" has no AB#. Don't use --watch here.
+gh pr checks "$PR"
+# DON'T USE: gh pr edit --body "Fixes AB#$STORY"
+# GitHub CLI still queries classic Projects (projectCards) on that command, and GitHub rejects the field, so the body never changes. See Known issue & fix below.
+# Update the description through the REST API instead. Inside a clone, gh api fills in {owner}/{repo}.
+# --method PATCH updates the PR. -f body= sets the description.
+# Double quotes expand $STORY. ${STORY:?STORY not set} aborts if the variable is missing, instead of writing "Fixes AB#".
+# If you already know the IDs, a literal also works: -f body='Fixes AB#864' (single quotes are safe because the value has no variable).
+gh api --method PATCH "repos/{owner}/{repo}/pulls/$PR" -f body="Fixes AB#${STORY:?STORY not set}"
+# Confirm the description actually changed to Fixes AB#<id> (the require-ab-link check reads this body, not the commit message).
+gh pr view "$PR" --json body --jq .body
+# The workflow listens for edited, so the check re-runs. --watch waits until required checks finish; it should now be green.
+gh pr checks "$PR" --watch
 # Squash-merge to the default branch and delete the feature branch. Only this merge moves the story to Resolved.
-gh pr merge --squash --delete-branch
+gh pr merge "$PR" --squash --delete-branch
 ```
+
+> **Known issue & fix.** Do not use ~~`gh pr edit --body "Fixes AB#$STORY"`~~ (PowerShell: ~~`gh pr edit --body "Fixes AB#$story"`~~). `gh pr edit` can fail before it changes the body: its GraphQL query still asks for classic Projects (`projectCards`), and GitHub rejects that field with an error such as `GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience ... (repository.pullRequests.nodes.0.projectCards)`. The description stays `No link`, so `require-ab-link` stays red. Classic Projects have been sunset ([changelog](https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/)).
+>
+> The check reads the **PR description** (body), not the commit message. `AB#864` in the commit creates a Boards link, but it is not enough for this Actions gate.
+>
+> Watch quoting, too. In bash, double quotes expand `$STORY`. That is what you want when the variable is set (as it was in the same shell as the commit). In a **new** shell, `$STORY` is empty, so `"Fixes AB#$STORY"` becomes `Fixes AB#`. `${STORY:?STORY not set}` fails the command instead of writing a broken body. In PowerShell, `$story` is a PowerShell variable: double quotes expand it, **single quotes do not** — `'Fixes AB#$story'` would be stored literally. Check the variable first (`Write-Output "STORY=$story"` / `echo "$STORY"`), or use a literal once you know the id: `-f body='Fixes AB#864'`.
+>
+> Use the REST API to update the body ([Update a pull request](https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request)). Inside a clone, `gh api` replaces `{owner}/{repo}` automatically. Quote that path in PowerShell so `{owner}` is not treated as a script block. Then verify with `gh pr view` and `gh pr checks`.
+>
+> If you wanted to skip the failing-check demo, you could create the PR with the link already in the body (`gh pr create --title "Docs" --body "Fixes AB#${STORY:?STORY not set}"`). This lab keeps the `"No link"` create on purpose so you see the gate fail, then pass after the description is fixed.
 
 **Expected result:**
 
-1. After `gh pr create`, the `require-ab-link` check is **red**, and merge is blocked if the ruleset is active.
-2. After `gh pr edit`, the check re-runs (`edited` is in the workflow `types`) and goes **green**. The story's **Development** section in Boards lists the GitHub commit and PR. The state is still unchanged.
+1. After `gh pr create`, `gh pr checks` shows `require-ab-link` **red**, and merge is blocked if the ruleset is active.
+2. After the `gh api` PATCH, `gh pr view … --jq .body` prints `Fixes AB#<id>`. The check re-runs (`edited` is in the workflow `types`) and goes **green**. The story's **Development** section in Boards lists the GitHub commit and PR. The state is still unchanged.
 3. After `gh pr merge`, the PR is merged to `main`, the feature branch is deleted, and the story state becomes **Resolved**.
 
-**Do it in the portal instead:** Create the branch and commit in the GitHub UI or on the command line, then **Pull requests → New** with body `No link`. Wait for the red check. Edit the description to `Fixes AB#<story-id>` → wait for green → **Squash and merge**.
+**Do it in the portal instead:** Create the branch and commit in the GitHub UI or on the command line, then **Pull requests → New** with body `No link`. Wait for the red check. Edit the description to `Fixes AB#<story-id>` (the web UI does not hit the `gh pr edit` bug) → wait for green → **Squash and merge**.
 
-**If something goes wrong:** `$story` / `$STORY` empty — restore it from Lab B. Merge blocked by approvals — set required approvals to 0 (step 4). Check never appears in the ruleset picker — it appears after the first run; type the job name, or add it after this PR's first (failing) run and then `gh pr comment` / re-edit the body to re-run. `AB#` in the **commit message** already created a link, but that does not change state and does not satisfy a body-only Actions gate. If the state does not change after merge, confirm you merged into the **default** branch (`main`), not a release branch, and that the body still contains `Fixes AB#<id>` at merge time.
+**Common errors:**
+
+- `GraphQL: Projects (classic) is being deprecated ... projectCards` — you used `gh pr edit`. The body was not updated. Use the `gh api --method PATCH` command above, then `gh pr view $pr --json body --jq .body` (bash: `"$PR"`) to confirm.
+- `require-ab-link` still red after an edit — the description still has no `AB#<digits>`. Typical causes: `gh pr edit` failed as above; `$story` / `$STORY` was empty so the body became `Fixes AB#`; or you looked at the commit message, which this check does not read.
+- `$story` / `$STORY` empty because you opened a new terminal — restore it from Lab B (`$story = "864"` / `STORY=864`). The bash form `${STORY:?STORY not set}` stops you writing a broken body.
+- `gh pr checks --watch` says *no checks reported* — the workflow has not started or re-run yet. Wait about 10 seconds and run it again.
+- Merge blocked by approvals — set required approvals to 0 (step 4). Check never appears in the ruleset picker — it appears after the first run; type the job name, or add it after this PR's first (failing) run and then update the body (or comment) to re-run.
+- If the state does not change after merge, confirm you merged into the **default** branch (`main`), not a release branch, and that the body still contains `Fixes AB#<id>` at merge time.
 
 #### Verify Lab C
 
