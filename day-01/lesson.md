@@ -620,7 +620,7 @@ Set-Content -Path README.md -Value "# az401-lab-app" -Encoding utf8
 # Stage, commit, and push so the repo has a default branch (needed later for the ruleset).
 git add .
 git commit -m "init"
-git push -u origin main
+git push -u origin master
 ```
 
 **Ubuntu (bash)**
@@ -630,7 +630,7 @@ gh auth login
 # Create a private repo and clone it here. --private keeps the lab off the public internet; --clone runs git clone for you.
 gh repo create vijayraavi/az401-lab-app --private --clone && cd az401-lab-app
 # Create README, commit, and push so the repo has a default branch (needed later for the ruleset).
-echo "# az401-lab-app" > README.md && git add . && git commit -m "init" && git push -u origin main
+echo "# az401-lab-app" > README.md && git add . && git commit -m "init" && git push -u origin master
 ```
 
 **Expected result:** `gh auth login` shows you signed in as the intended account (hostname `github.com`). The repo exists at `https://github.com/vijayraavi/az401-lab-app`, you are inside the clone, and `main` has one commit with `README.md`.
