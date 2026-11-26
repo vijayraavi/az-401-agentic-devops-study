@@ -42,8 +42,8 @@ The full sub-skill bullets are in the study guide link above. Build & release pi
 ```
 README.md          overview + full plan
 PLAN.md            day-by-day plan with weighting rationale
-day-01/            lesson.md, cheatsheet.md, infographic.png, practice-questions.md
-day-02 … day-19/   README.md placeholder (date + topic), filled in on the day
+day-01 … day-03/   lesson.md, cheatsheet.md, infographic.png, practice-questions.md
+day-04 … day-19/   README.md placeholder (date + topic), filled in on the day
 ```
 
 ## Full 19-day plan
