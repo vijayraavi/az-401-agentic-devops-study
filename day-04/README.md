@@ -1,9 +1,6 @@
-# Day 4 | Fri 27 Nov 2026 (IST)
+# Day 4 | Fri 27 Nov 2026 (IST): Branching strategies, PR workflows, branch policies vs rulesets & Copilot agent PR rules
 
-**Domain:** Source control
-
-**Topic:** Branching strategies (trunk, feature, release, Git worktree, Git flow, GitHub flow); PR workflows; ADO branch policies vs GitHub rulesets/branch protection; rules for Copilot agent PRs
-
-**Planned hands-on:** Branch policies (`az repos policy`), GitHub ruleset, Copilot-authored PR review flow
-
-_Placeholder: the lesson, cheat sheet, infographic and practice questions get added on the day. See [../PLAN.md](../PLAN.md) and the [AZ-401 study guide](https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/az-401)._
+- [lesson.md](lesson.md): concepts (trunk-based, feature, release, Git worktree, Git flow, GitHub flow; PR workflow design; Azure Repos branch policies vs GitHub rulesets and branch protection; built-in rules for Copilot cloud agent PRs; Copilot code review on both platforms), Mermaid diagrams, labs A–C (local branching/worktree practice, Azure DevOps `az repos policy`, GitHub rulesets with `gh api` and a Copilot-authored PR flow), cleanup, cost notes
+- [cheatsheet.md](cheatsheet.md): one-page summary
+- [infographic.png](infographic.png): visual summary (regenerate with `python3 make_infographic.py`)
+- [practice-questions.md](practice-questions.md): 5 exam-style questions with answers
